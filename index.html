@@ -1,0 +1,928 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Glass Berry Club</title>
+<meta name="description" content="무중력 공간을 떠다니는 유리 딸기. 딸기를 하나씩 띄우고, 천천히 부딪히는 소리를 들어 보세요.">
+<meta name="theme-color" content="#fbf8f7">
+<link rel="icon" href="assets/icon.png">
+<link rel="apple-touch-icon" href="assets/icon.png">
+<meta property="og:title" content="Glass Berry Club · 유리딸기 클럽">
+<meta property="og:description" content="무중력의 유리 딸기들이 천천히 부딪혀요.">
+<meta property="og:image" content="assets/glass-sphere-ruby.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+  :root {
+    --bg: #fbf8f7;
+    --ink: #111111;
+    --ink-2: #4a4446;
+    --ink-3: #8a8284;
+    --berry: #e0122d;
+    --line: rgba(17, 17, 17, .14);
+    --glass: rgba(255, 255, 255, .72);
+    --chip-ring: rgba(17, 17, 17, .9);
+    --copy-h: 0px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); overflow: hidden; }
+  body {
+    font-family: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    overscroll-behavior: none;
+  }
+  #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+  #stage.dragging { cursor: grabbing; }
+
+  .ui { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+  .brand { position: absolute; top: max(18px, env(safe-area-inset-top)); left: max(20px, env(safe-area-inset-left));
+           font-size: 12px; line-height: 1.35; letter-spacing: .02em; }
+  .brand b { display: block; font-weight: 800; font-size: 13px; letter-spacing: .14em; }
+  .brand span { color: var(--ink-2); }
+  .info { position: absolute; top: max(18px, env(safe-area-inset-top)); right: max(20px, env(safe-area-inset-right));
+          text-align: right; }
+  .info .lead { font-size: clamp(13px, 1.25vw, 17px); font-weight: 500; line-height: 1.35; }
+  .info .big { font-size: clamp(40px, 6.2vw, 86px); font-weight: 800; line-height: .92; letter-spacing: -.03em; margin-top: 10px;
+               font-variant-numeric: tabular-nums; }
+  .info .unit { font-size: clamp(18px, 2.3vw, 32px); font-weight: 700; letter-spacing: -.01em; }
+
+  .copy { position: absolute; left: max(20px, env(safe-area-inset-left)); bottom: max(18px, env(safe-area-inset-bottom));
+          right: max(20px, env(safe-area-inset-right)); display: flex; align-items: flex-end;
+          justify-content: space-between; gap: 24px; }
+  .copy h1 { margin: 0 0 8px; font-size: clamp(17px, 1.7vw, 24px); font-weight: 700; letter-spacing: -.02em; }
+  .copy p { margin: 0; font-size: clamp(12px, 1.05vw, 14px); line-height: 1.6; color: var(--ink-2); }
+  .copy .hint { margin-top: 10px; font-size: 12px; color: var(--ink-3); letter-spacing: .01em; }
+
+  .controls { pointer-events: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .btn { appearance: none; border: 1px solid var(--line); background: var(--glass);
+         -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+         color: var(--ink); font: 600 13px/1 "Pretendard", system-ui, sans-serif; height: 36px; padding: 0 14px;
+         border-radius: 999px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+         transition: transform .15s, background .2s, color .2s; }
+  .btn:active { transform: scale(.95); }
+  .btn.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .btn svg { width: 15px; height: 15px; flex: none; }
+  .chips { display: flex; gap: 7px; }
+  .chip { width: 30px; height: 30px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+          background-image: url(assets/color-chips.jpg); background-size: 300% 200%;
+          box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08), 0 2px 6px rgba(160, 0, 30, .18);
+          outline: 2px solid transparent; outline-offset: 2px; transition: transform .15s, outline-color .2s; }
+  .chip:active { transform: scale(.9); }
+  .chip.on { outline-color: var(--chip-ring); }
+  .chip.mix { background: conic-gradient(#e0122d, #ff6b93, #ffd3de, #7d1552, #ff4a1c, #8f0f33, #e0122d); }
+
+  /* 가운데 딸기 추가 */
+  .add-wrap { position: absolute; left: 50%; transform: translateX(-50%);
+              bottom: max(22px, env(safe-area-inset-bottom)); display: flex; gap: 8px; align-items: center; pointer-events: auto; }
+  .add { height: 52px; padding: 0 22px 0 8px; gap: 10px; font-size: 15px; font-weight: 700;
+         background: var(--ink); color: #fff; border-color: var(--ink);
+         box-shadow: 0 10px 28px rgba(200, 0, 40, .22); }
+  .add .dot { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
+              background: radial-gradient(circle at 35% 30%, #ff9aa8 0%, #ff2b3f 38%, #a8001a 100%); }
+  .add .dot svg { width: 18px; height: 18px; }
+  .add:disabled { opacity: .45; cursor: default; }
+  .reset { width: 40px; height: 40px; padding: 0; justify-content: center; }
+
+  /* 배경 문구 편집 */
+  .panel { position: fixed; z-index: 5; right: max(20px, env(safe-area-inset-right)); bottom: 150px; width: 320px;
+           background: rgba(255, 255, 255, .9); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+           border: 1px solid var(--line); border-radius: 20px; padding: 18px; box-shadow: 0 18px 50px rgba(60, 0, 15, .16);
+           display: flex; flex-direction: column; gap: 14px; user-select: text; -webkit-user-select: text; touch-action: auto; }
+  .panel[hidden] { display: none; }
+  .panel h2 { margin: 0; font-size: 15px; font-weight: 700; }
+  .field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+  .field small { font-weight: 400; color: var(--ink-3); }
+  .field textarea, .field input[type=text] {
+    font: 700 16px/1.35 "Pretendard", system-ui, sans-serif; color: var(--ink); background: #fff;
+    border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; resize: none; outline: none; }
+  .field textarea:focus, .field input[type=text]:focus { border-color: var(--ink); }
+  .toggle { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .toggle input { position: absolute; opacity: 0; pointer-events: none; }
+  .toggle .sw { width: 44px; height: 26px; border-radius: 999px; background: #ddd5d6; position: relative; transition: background .2s; flex: none; }
+  .toggle .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
+                       background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .2); transition: transform .2s; }
+  .toggle input:checked + .sw { background: var(--berry); }
+  .toggle input:checked + .sw::after { transform: translateX(18px); }
+  .toggle input:focus-visible + .sw { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .panel-row { display: flex; gap: 8px; justify-content: flex-end; }
+  .panel .btn.done { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+  .toast { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 6;
+           background: rgba(17, 17, 17, .86); color: #fff; padding: 12px 18px; border-radius: 14px;
+           font-size: 14px; font-weight: 500; opacity: 0; pointer-events: none; transition: opacity .3s; text-align: center; }
+  .toast.show { opacity: 1; }
+
+  .loading { position: fixed; inset: 0; display: grid; place-items: center; z-index: 7; background: var(--bg);
+             transition: opacity .6s; font-size: 13px; letter-spacing: .14em; font-weight: 700; }
+  .loading.done { opacity: 0; pointer-events: none; }
+
+  @media (max-width: 760px) {
+    .copy { flex-direction: column; align-items: stretch; gap: 14px; }
+    .controls { align-items: stretch; }
+    .row { justify-content: space-between; }
+    .row .btn { flex: 1; justify-content: center; padding: 0 8px; }
+    .chips { justify-content: space-between; flex: 1; }
+    .chip { width: 32px; height: 32px; }
+    .info .big { margin-top: 6px; }
+    .copy p br { display: none; }
+    .add-wrap { bottom: calc(var(--copy-h) + 30px); }
+    .add { height: 48px; font-size: 14px; }
+    .add .dot { width: 34px; height: 34px; }
+    .panel { left: 12px; right: 12px; width: auto; bottom: max(12px, env(safe-area-inset-bottom)); }
+  }
+  @media (max-width: 380px) {
+    .chip { width: 28px; height: 28px; }
+    .btn { font-size: 12px; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="stage" aria-label="떠다니는 유리 딸기"></canvas>
+
+<div class="ui">
+  <div class="brand"><b>GLASS BERRY CLUB</b><span>유리딸기 클럽 · 2026</span></div>
+
+  <div class="info">
+    <div class="lead">무중력에 띄운 유리 딸기<br>천천히 부딪혀 봐요</div>
+    <div class="big"><span id="count">01</span><span class="unit"> 알</span></div>
+  </div>
+
+  <div class="add-wrap" id="addWrap">
+    <button class="btn add" id="btnAdd" type="button">
+      <span class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+      딸기 띄우기
+    </button>
+    <button class="btn reset" id="btnReset" type="button" aria-label="하나만 남기기" title="하나만 남기기">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+    </button>
+  </div>
+
+  <div class="copy" id="copy">
+    <div>
+      <h1>무중력의 딸기들이, 천천히 부딪혀요.</h1>
+      <p>딸기를 하나씩 띄워 보세요. 살짝 밀면 우주를 떠다니듯 미끄러지고,<br>
+         서로 닿을 때마다 맑은 유리 소리가 길게 울립니다. 딸기를 누르면 색이 바뀌어요.</p>
+      <div class="hint" id="hint">끌어서 살짝 밀기 · 스페이스바로 흔들기</div>
+    </div>
+    <div class="controls">
+      <div class="row">
+        <button class="btn on" id="btnSound" type="button" aria-pressed="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+          <span>소리</span>
+        </button>
+        <button class="btn" id="btnText" type="button" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V5h16v2"/><path d="M12 5v14"/><path d="M9 19h6"/></svg>
+          <span>문구</span>
+        </button>
+        <button class="btn" id="btnGravity" type="button" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v13"/><path d="m6 11 6 6 6-6"/><path d="M5 21h14"/></svg>
+          <span>중력</span>
+        </button>
+        <button class="btn" id="btnShake" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M3 9v6M21 9v6"/></svg>
+          <span id="shakeLabel">흔들기</span>
+        </button>
+      </div>
+      <div class="chips" id="chips" role="group" aria-label="딸기 색">
+        <button class="chip mix on" data-color="-1" type="button" aria-label="섞기"></button>
+        <button class="chip" data-color="0" type="button" aria-label="레드" style="background-position:0% 0%"></button>
+        <button class="chip" data-color="1" type="button" aria-label="핑크" style="background-position:50% 0%"></button>
+        <button class="chip" data-color="2" type="button" aria-label="클리어핑크" style="background-position:100% 0%"></button>
+        <button class="chip" data-color="3" type="button" aria-label="퍼플" style="background-position:0% 100%"></button>
+        <button class="chip" data-color="4" type="button" aria-label="오렌지레드" style="background-position:50% 100%"></button>
+        <button class="chip" data-color="5" type="button" aria-label="레드퍼플" style="background-position:100% 100%"></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="panel" hidden role="dialog" aria-label="배경 문구 편집">
+  <h2>배경 문구</h2>
+  <label class="field">큰 문구 <small>줄바꿈하면 그대로 줄이 나뉘어요</small>
+    <textarea id="inMain" rows="3" maxlength="48" spellcheck="false"></textarea>
+  </label>
+  <label class="field">작은 문구
+    <input type="text" id="inSub" maxlength="24" spellcheck="false">
+  </label>
+  <label class="toggle">시간·날짜 표시
+    <input type="checkbox" id="inClock"><span class="sw"></span>
+  </label>
+  <div class="panel-row">
+    <button class="btn" id="btnTextReset" type="button">처음 문구로</button>
+    <button class="btn done" id="btnTextDone" type="button">완료</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="loading" id="loading">GLASS BERRY</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
+const MAX_BERRIES = 18;
+
+/* ---------- 색 (레퍼런스 컬러 변형 6종) ---------- */
+const PALETTE = [
+  { name: '레드',       color: '#ff2b3f', att: '#c4001c', dist: 0.55 },
+  { name: '핑크',       color: '#ff7aa0', att: '#ff2d6a', dist: 0.9 },
+  { name: '클리어핑크', color: '#ffe3ea', att: '#ffb3c6', dist: 2.6 },
+  { name: '퍼플',       color: '#c0367a', att: '#5a0838', dist: 0.45 },
+  { name: '오렌지레드', color: '#ff5a2a', att: '#e41d08', dist: 0.7 },
+  { name: '레드퍼플',   color: '#e02150', att: '#6e0626', dist: 0.42 },
+];
+// 알마다 다른 음 — 중음역 펜타토닉이라 여러 개가 닿아도 화음처럼 겹침
+const NOTES = [523.3, 587.3, 659.3, 784.0, 880.0, 1046.5, 1174.7, 1318.5];
+const HERO_NOTE = 392.0;
+
+/* ---------- 렌더러 ---------- */
+const canvas = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? 1.6 : 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.setClearColor(0xfbf8f7, 1);
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.03).texture;
+scene.environmentIntensity = 1.1;
+
+const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(-3, 5, 6); scene.add(key);
+const rim = new THREE.DirectionalLight(0xffd6de, 1.4); rim.position.set(4, -2, 3); scene.add(rim);
+
+const CAM_Z = 12, FOV = 30, TEXT_Z = -3.2;
+const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 100);
+camera.position.set(0, 0, CAM_Z);
+
+let W = 1, H = 1, HW = 1, HH = 1, UNIT = 1;   // HW/HH = z=0 평면의 보이는 반폭/반높이
+let FLOOR = -1;                                // 아래쪽 경계 (문구 블록·추가 버튼 위)
+let BASE_R = 1;
+
+/* ---------- 배경 문구 설정 ---------- */
+const DEFAULT_TEXT = { main: 'GLASS BERRY', sub: '유리 딸기', clock: false };
+const TEXT_KEY = 'glassberry.text';
+let typeOpt = { ...DEFAULT_TEXT };
+try { const s = JSON.parse(localStorage.getItem(TEXT_KEY)); if (s && typeof s.main === 'string') typeOpt = { ...DEFAULT_TEXT, ...s }; } catch (e) {}
+function saveText() { try { localStorage.setItem(TEXT_KEY, JSON.stringify(typeOpt)); } catch (e) {} }
+
+/* ---------- 뒤쪽 타이포그래피 (유리가 굴절시키도록 3D 평면에 그림) ---------- */
+const textCanvas = document.createElement('canvas');
+const tctx = textCanvas.getContext('2d');
+const textTex = new THREE.CanvasTexture(textCanvas);
+textTex.colorSpace = THREE.SRGBColorSpace;
+textTex.anisotropy = 4;
+const textPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: textTex, toneMapped: false }));
+textPlane.position.z = TEXT_Z;
+scene.add(textPlane);
+
+const DAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const pad2 = n => String(n).padStart(2, '0');
+function splitLines(text, portrait) {
+  const raw = text.split('\n').map(s => s.trim()).filter(Boolean);
+  if (!raw.length) return [];
+  let lines = raw.length > 1 ? raw : raw[0].split(/\s+/);
+  // 세로 화면에선 긴 단어를 포스터처럼 반으로 쪼갬 (GLASS → GLA / SS)
+  if (portrait && raw.length === 1) {
+    lines = lines.flatMap(w => [...w].length >= 5 ? [[...w].slice(0, Math.ceil([...w].length / 2)).join(''), [...w].slice(Math.ceil([...w].length / 2)).join('')] : [w]);
+  }
+  return lines.slice(0, 6);
+}
+function drawType() {
+  const dpr = Math.min(devicePixelRatio, 2);
+  const cw = Math.round(Math.min(W * dpr, 2600)), ch = Math.round(cw * H / W);
+  textCanvas.width = cw; textCanvas.height = ch;
+  const c = tctx;
+  c.fillStyle = '#fbf8f7'; c.fillRect(0, 0, cw, ch);
+  c.fillStyle = '#111111';
+  c.textBaseline = 'alphabetic';
+  const portrait = H > W * 1.05;
+  const pad = cw * (portrait ? 0.035 : 0.03);
+  const top = ch * (portrait ? 0.14 : 0.13);
+  const bottom = ch * (portrait ? 0.66 : 0.76);
+  const clockH = typeOpt.clock ? (bottom - top) * (portrait ? 0.24 : 0.28) : 0;
+  const mainBottom = bottom - clockH;
+  const lines = splitLines(typeOpt.main, portrait);
+  const font = (w, s) => `${w} ${s}px Pretendard, system-ui, sans-serif`;
+  const ls = s => { if ('letterSpacing' in c) c.letterSpacing = `${s}px`; };
+
+  let last = null, size = 0;
+  if (lines.length) {
+    const lineH = (mainBottom - top) / lines.length;
+    size = lineH * 1.18;
+    c.font = font(900, size); ls(-size * 0.045);
+    const maxW = cw * (portrait ? 0.93 : 0.72) - pad;
+    const widest = Math.max(...lines.map(l => c.measureText(l).width));
+    if (widest > maxW) size *= maxW / widest;
+    c.font = font(900, size); ls(-size * 0.045);
+    lines.forEach((l, i) => {
+      const w = c.measureText(l).width;
+      const y = top + lineH * (i + 1) - lineH * 0.08;
+      // 포스터처럼 좌·우로 번갈아 배치
+      const x = portrait ? (i % 2 ? cw - pad - w : pad) : (i % 2 ? pad + cw * 0.12 : pad);
+      c.fillText(l, x, y);
+      last = { x, w, y };
+    });
+  }
+  // 마지막 줄 끝에 붙는 작은 문구
+  if (typeOpt.sub.trim()) {
+    const s = Math.round((size || ch * 0.2) * 0.17);
+    c.font = font(700, s); ls(0);
+    const kw = c.measureText(typeOpt.sub).width;
+    if (last) c.fillText(typeOpt.sub, last.x + last.w - kw, last.y + size * 0.24);
+    else c.fillText(typeOpt.sub, cw - pad - kw, top + s);
+  }
+  // 시간·날짜
+  if (typeOpt.clock) {
+    const d = new Date();
+    const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    const date = `${d.getFullYear()}.${pad2(d.getMonth() + 1)}.${pad2(d.getDate())} ${DAYS[d.getDay()]}`;
+    let ts = clockH * 1.05;
+    c.font = font(200, ts); ls(-ts * 0.03);
+    const maxW = cw * (portrait ? 0.9 : 0.5);
+    const tw0 = c.measureText(time).width;
+    if (tw0 > maxW) { ts *= maxW / tw0; c.font = font(200, ts); }
+    const tw = c.measureText(time).width;
+    const ty = bottom + (last ? 0 : -clockH * 0.1);
+    const tx = portrait ? pad : cw - pad - cw * 0.26 - tw;
+    c.fillText(time, tx, ty);
+    const ds = Math.max(12, ts * 0.16);
+    c.font = font(600, ds); ls(ds * 0.12);
+    c.fillText(date, tx + ts * 0.04, ty - ts * 0.78);
+  }
+  textTex.needsUpdate = true;
+}
+let lastMinute = -1;
+setInterval(() => {
+  const m = new Date().getMinutes();
+  if (typeOpt.clock && m !== lastMinute) drawType();
+  lastMinute = m;
+}, 5000);
+
+/* ---------- 딸기 지오메트리 (씨앗 자리가 오목하게 파인 하트형) ---------- */
+function fib(n) {
+  const pts = [], g = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < n; i++) {
+    const y = 1 - (i + 0.5) / n * 2, r = Math.sqrt(1 - y * y), t = g * i;
+    pts.push(new THREE.Vector3(Math.cos(t) * r, y, Math.sin(t) * r));
+  }
+  return pts;
+}
+function makeBerryGeometry(o) {
+  let g = new THREE.SphereGeometry(1, IS_TOUCH ? 110 : 140, IS_TOUCH ? 84 : 104);
+  g.deleteAttribute('uv'); g.deleteAttribute('normal');
+  g = mergeVertices(g, 1e-5);
+  const seeds = fib(o.seeds).filter(s => s.y < 0.86);
+  const p = g.attributes.position, v = new THREE.Vector3();
+  const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i).normalize();
+    let d = 0;
+    for (const s of seeds) {
+      if (v.dot(s) < 0.955) continue;
+      // 위아래로 살짝 긴 타원 구멍
+      const dy = (v.y - s.y) * 0.72, dx = Math.hypot(v.x - s.x, v.z - s.z);
+      const a = Math.hypot(dx, dy);
+      d += -o.pit * Math.exp(-((a / 0.085) ** 2))
+           + 0.016 * Math.exp(-(((a - 0.125) / 0.035) ** 2))
+           + 0.032 * Math.exp(-((a / 0.03) ** 2));
+    }
+    let x = v.x * (1 + d), y = v.y * (1 + d), z = v.z * (1 + d);
+    if (y < 0) { const k = 1 - o.taper * Math.pow(sm(0, 1, -y), 1.1); x *= k; z *= k; y *= o.drop; }
+    else { const k = 1 + 0.07 * y; x *= k; z *= k; }
+    y -= o.heart * Math.exp(-(x * x) / 0.08) * sm(0.25, 1, y);   // 하트 윗부분 오목
+    x += o.asym * y * y;
+    z *= o.flat;
+    y *= o.tall;
+    p.setXYZ(i, x, y, z);
+  }
+  g.computeVertexNormals();
+  g.computeBoundingSphere();
+  return g;
+}
+const SHAPES = [
+  { seeds: 64, pit: 0.055, taper: 0.45, drop: 1.12, heart: 0.30, asym: 0.0,  flat: 0.82, tall: 1.0 },  // 기본형
+  { seeds: 70, pit: 0.050, taper: 0.30, drop: 1.0,  heart: 0.22, asym: 0.0,  flat: 0.92, tall: 0.94 }, // 통통형
+  { seeds: 60, pit: 0.058, taper: 0.55, drop: 1.25, heart: 0.16, asym: 0.0,  flat: 0.84, tall: 1.12 }, // 길쭉형
+  { seeds: 66, pit: 0.054, taper: 0.42, drop: 1.1,  heart: 0.30, asym: 0.12, flat: 0.80, tall: 1.0 },  // 비대칭형
+];
+const geos = SHAPES.map(makeBerryGeometry);
+
+function glassMaterial(pi) {
+  const P = PALETTE[pi];
+  return new THREE.MeshPhysicalMaterial({
+    color: P.color, transmission: 1, thickness: 0.6, ior: 1.42, roughness: 0.04,
+    attenuationColor: P.att, attenuationDistance: P.dist * 1.4,
+    // 검은 글자 위에서도 붉은 속빛이 남도록 은은한 자체 발광
+    emissive: P.att, emissiveIntensity: 0.22,
+    clearcoat: 1, clearcoatRoughness: 0.03, specularIntensity: 1, specularColor: '#ffffff',
+    dispersion: 0.35, envMapIntensity: 1.3,
+  });
+}
+function setMaterialColor(m, pi) {
+  const P = PALETTE[pi];
+  m.userData.from = { c: m.color.clone(), a: m.attenuationColor.clone(), d: m.attenuationDistance };
+  m.userData.to = { c: new THREE.Color(P.color), a: new THREE.Color(P.att), d: P.dist * 1.4 };
+  m.userData.t = 0;
+}
+function tickMaterial(m, dt) {
+  const u = m.userData; if (!u.to || u.t >= 1) return;
+  u.t = Math.min(1, u.t + dt * 2.2);
+  const e = 1 - Math.pow(1 - u.t, 3);
+  m.color.copy(u.from.c).lerp(u.to.c, e);
+  m.attenuationColor.copy(u.from.a).lerp(u.to.a, e);
+  m.emissive.copy(m.attenuationColor);
+  m.attenuationDistance = u.from.d + (u.to.d - u.from.d) * e;
+}
+
+/* ---------- 뒤 종이에 비치는 붉은 그림자 ---------- */
+const shadowTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d'), g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.45, 'rgba(255,255,255,.45)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+})();
+const shadowGeo = new THREE.PlaneGeometry(1, 1);
+
+/* ---------- 몸체(물리) ---------- */
+const bodies = [];
+const rnd = (a, b) => a + Math.random() * (b - a);
+function randomUnit3(scale) { return new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize().multiplyScalar(scale); }
+
+function addBody(mesh, { k, pi, note, unitR, isHero = false }) {
+  const sh = new THREE.Mesh(shadowGeo, new THREE.MeshBasicMaterial({
+    map: shadowTex, color: PALETTE[pi].att, transparent: true, opacity: 0.3, depthWrite: false, toneMapped: false,
+  }));
+  sh.renderOrder = -1;
+  scene.add(mesh); scene.add(sh);
+  const a = Math.random() * Math.PI * 2;
+  const b = {
+    mesh, shadow: sh, k, r: BASE_R * k, unitR, pi, note, isHero,
+    pos: new THREE.Vector2(), vel: new THREE.Vector2(),
+    // 아주 느린 고유 표류 — 가만히 두면 이 속도로 둥실 흘러감
+    drift: new THREE.Vector2(Math.cos(a), Math.sin(a)).multiplyScalar(rnd(0.04, 0.08)),
+    z: isHero ? 0 : rnd(-0.35, 0.35),
+    ang: new THREE.Vector3(), spin: randomUnit3(rnd(0.05, 0.12)),
+    lastHit: -1, pop: 0, grow: 1,
+  };
+  bodies.push(b);
+  updateCount();
+  return b;
+}
+function removeBody(b) {
+  scene.remove(b.mesh); scene.remove(b.shadow);
+  b.mesh.material.dispose(); b.shadow.material.dispose();
+  bodies.splice(bodies.indexOf(b), 1);
+  updateCount();
+}
+function updateCount() {
+  document.getElementById('count').textContent = pad2(bodies.length);
+  document.getElementById('btnAdd').disabled = bodies.length >= MAX_BERRIES;
+}
+
+function layout() {
+  W = innerWidth; H = innerHeight;
+  renderer.setSize(W, H, false);
+  camera.aspect = W / H; camera.updateProjectionMatrix();
+  HH = CAM_Z * Math.tan(THREE.MathUtils.degToRad(FOV / 2));
+  HW = HH * camera.aspect;
+  UNIT = Math.min(HW, HH);
+  const dh = (CAM_Z - TEXT_Z) * Math.tan(THREE.MathUtils.degToRad(FOV / 2));
+  textPlane.scale.set(dh * camera.aspect * 2, dh * 2, 1);
+  const copy = document.getElementById('copy');
+  document.documentElement.style.setProperty('--copy-h', copy.offsetHeight + 'px');
+  drawType();
+  BASE_R = UNIT * (H > W * 1.05 ? 0.25 : 0.2);
+  // 아래 문구·추가 버튼 위를 바닥으로 삼아 글을 덮지 않게
+  const topEdge = Math.min(copy.getBoundingClientRect().top, document.getElementById('addWrap').getBoundingClientRect().top) - 6;
+  FLOOR = -((topEdge / H) * 2 - 1) * HH;
+  bodies.forEach(b => { b.r = BASE_R * b.k; });
+}
+function screenToWorld(x, y, out = new THREE.Vector2()) {
+  return out.set((x / W * 2 - 1) * HW, -(y / H * 2 - 1) * HH);
+}
+
+/* ---------- 소리 : 무중력 공간의 부드러운 유리 울림 ---------- */
+const Sound = {
+  ctx: null, on: true, voices: 0, last: 0,
+  init() {
+    if (this.ctx) { if (this.ctx.state !== 'running') this.ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    const ctx = this.ctx = new AC();
+    this.out = ctx.createGain(); this.out.gain.value = 0.75;
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -18; comp.ratio.value = 3; comp.attack.value = 0.01; comp.release.value = 0.4;
+    this.out.connect(comp).connect(ctx.destination);
+    // 넓고 긴 잔향 — 텅 빈 공간에 울리는 느낌
+    const len = Math.floor(ctx.sampleRate * 4.2), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      let lp = 0;
+      for (let i = 0; i < len; i++) {
+        lp += ((Math.random() * 2 - 1) - lp) * 0.35;          // 고음을 깎은 부드러운 꼬리
+        d[i] = lp * Math.pow(1 - i / len, 2.4);
+      }
+    }
+    const conv = ctx.createConvolver(); conv.buffer = ir;
+    const pre = ctx.createDelay(0.2); pre.delayTime.value = 0.04;
+    this.wet = ctx.createGain(); this.wet.gain.value = 0.9;
+    this.send = ctx.createGain();
+    this.send.connect(pre).connect(conv).connect(this.wet).connect(this.out);
+    if (ctx.state !== 'running') ctx.resume();
+  },
+  // strength 0..1, freq Hz, pan -1..1
+  ting(strength, freq, pan = 0) {
+    const ctx = this.ctx; if (!ctx || !this.on || ctx.state !== 'running') return;
+    const now = ctx.currentTime;
+    if (this.voices > 12 || now - this.last < 0.03) return;
+    this.last = now; this.voices++;
+    const s = Math.min(1, Math.max(0.08, strength));
+    const bus = ctx.createGain();
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200 + s * 2000; lp.Q.value = 0.3;
+    bus.connect(lp);
+    const pn = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (pn) { pn.pan.value = Math.max(-0.7, Math.min(0.7, pan)); lp.connect(pn); pn.connect(this.out); pn.connect(this.send); }
+    else { lp.connect(this.out); lp.connect(this.send); }
+    // 둥근 유리구슬 울림: 기음 + 아주 옅은 배음, 살짝 어긋난 쌍이 천천히 일렁임
+    const parts = [[1, 1], [1.004, 0.55], [2.76, 0.12], [5.4, 0.035]];
+    const dur = 2.2 + s * 1.6;
+    const f0 = freq * (1 + (Math.random() - 0.5) * 0.006);
+    parts.forEach(([r, amp], i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = f0 * r;
+      const a = amp * s * 0.16, d = i < 2 ? dur : dur * 0.35;
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.linearRampToValueAtTime(a, now + 0.012);      // 부드럽게 닿는 어택
+      g.gain.exponentialRampToValueAtTime(0.0001, now + d);
+      o.connect(g).connect(bus); o.start(now); o.stop(now + d + 0.05);
+    });
+    setTimeout(() => { this.voices--; bus.disconnect(); }, dur * 1000 + 120);
+  },
+};
+
+/* ---------- 입력 ---------- */
+const state = { gravity: false, sensor: false, gx: 0, gy: -1, colorMode: -1 };
+const pointer = { down: false, id: null, body: null, start: new THREE.Vector2(), startT: 0, world: new THREE.Vector2(), moved: false, offset: new THREE.Vector2(), hist: [] };
+const $ = id => document.getElementById(id);
+
+function toWorld(e, out) {
+  const r = canvas.getBoundingClientRect();
+  return screenToWorld(e.clientX - r.left, e.clientY - r.top, out);
+}
+function pick(w) {
+  let best = null, bd = Infinity;
+  for (const b of bodies) { const d = b.pos.distanceTo(w) - b.r * 1.05; if (d < 0 && d < bd) { bd = d; best = b; } }
+  return best;
+}
+canvas.addEventListener('pointerdown', e => {
+  Sound.init();
+  if (!$('panel').hidden) closePanel();
+  if (pointer.down) return;
+  pointer.down = true; pointer.id = e.pointerId; pointer.moved = false;
+  canvas.setPointerCapture(e.pointerId);
+  toWorld(e, pointer.world); pointer.start.set(e.clientX, e.clientY); pointer.startT = performance.now();
+  pointer.body = pick(pointer.world);
+  pointer.hist = [{ t: performance.now(), x: pointer.world.x, y: pointer.world.y }];
+  if (pointer.body) { pointer.offset.copy(pointer.body.pos).sub(pointer.world); canvas.classList.add('dragging'); }
+});
+canvas.addEventListener('pointermove', e => {
+  if (!pointer.down || e.pointerId !== pointer.id) return;
+  toWorld(e, pointer.world);
+  if (Math.hypot(e.clientX - pointer.start.x, e.clientY - pointer.start.y) > 7) pointer.moved = true;
+  pointer.hist.push({ t: performance.now(), x: pointer.world.x, y: pointer.world.y });
+  if (pointer.hist.length > 6) pointer.hist.shift();
+});
+function release(e) {
+  if (!pointer.down || e.pointerId !== pointer.id) return;
+  pointer.down = false; canvas.classList.remove('dragging');
+  const b = pointer.body, quick = performance.now() - pointer.startT < 320;
+  if (b) {
+    if (!pointer.moved && quick) cycleColor(b);
+    else {
+      // 놓을 때 손놀림 속도의 일부만 실어 보냄 — 무중력이라 오래 미끄러짐
+      const h = pointer.hist, a = h[0], z = h[h.length - 1], dt = Math.max(0.016, (z.t - a.t) / 1000);
+      b.vel.set((z.x - a.x) / dt, (z.y - a.y) / dt).multiplyScalar(0.35).clampLength(0, UNIT * 1.6);
+    }
+  } else if (!pointer.moved) nudge(pointer.world);
+  pointer.body = null;
+}
+canvas.addEventListener('pointerup', release);
+canvas.addEventListener('pointercancel', release);
+
+function cycleColor(b) {
+  b.pi = (b.pi + 1) % PALETTE.length;
+  setMaterialColor(b.mesh.material, b.pi);
+  b.shadow.material.color.set(PALETTE[b.pi].att);
+  b.pop = 1;
+  Sound.ting(0.55, b.note, b.pos.x / HW);
+  syncChips(-2);
+}
+// 빈 곳을 누르면 그 자리에서 잔잔한 물결이 퍼짐
+function nudge(w) {
+  for (const b of bodies) {
+    const d = b.pos.clone().sub(w), L = Math.max(d.length(), UNIT * 0.2);
+    const f = UNIT * 0.9 * Math.exp(-L / (UNIT * 0.9));
+    b.vel.addScaledVector(d.normalize(), f);
+  }
+}
+function shake(power = 1, dir = null) {
+  for (const b of bodies) {
+    const a = Math.random() * Math.PI * 2;
+    const m = UNIT * rnd(0.35, 0.8) * power;
+    b.vel.x += Math.cos(a) * m + (dir ? dir.x * UNIT * 0.5 * power : 0);
+    b.vel.y += Math.sin(a) * m + (dir ? dir.y * UNIT * 0.5 * power : 0);
+    b.ang.add(randomUnit3(0.5 * power));
+  }
+}
+
+/* ---------- 딸기 띄우기 ---------- */
+let spawnIndex = 0;
+function spawnBerry(fromBtn = true) {
+  if (bodies.length >= MAX_BERRIES) { toast('딸기가 가득 찼어요'); return; }
+  const i = spawnIndex++;
+  const pi = state.colorMode >= 0 ? state.colorMode : (i + 1) % PALETTE.length;
+  const m = new THREE.Mesh(geos[i % geos.length], glassMaterial(pi));
+  m.rotation.set(rnd(-0.35, 0.35), rnd(-0.8, 0.8), rnd(-0.35, 0.35));
+  const b = addBody(m, { k: rnd(0.78, 1.0), pi, note: NOTES[i % NOTES.length], unitR: 1.05 });
+  const r = $('btnAdd').getBoundingClientRect();
+  const p = fromBtn ? screenToWorld(r.left + r.width / 2, r.top) : new THREE.Vector2(rnd(-0.5, 0.5) * HW, 0);
+  b.pos.set(p.x + rnd(-0.2, 0.2) * UNIT, Math.max(p.y, FLOOR) + b.r * 0.9);
+  // 버튼에서 위로 천천히 떠오름
+  b.vel.set(rnd(-0.18, 0.18) * UNIT, rnd(0.4, 0.6) * UNIT);
+  b.grow = 0;
+  Sound.ting(0.35, b.note * 2, b.pos.x / HW);
+}
+$('btnAdd').addEventListener('click', () => { Sound.init(); spawnBerry(); });
+$('btnReset').addEventListener('click', () => {
+  Sound.init();
+  bodies.filter(b => !b.isHero).forEach(b => { b.leaving = true; });
+  if (bodies.length > 1) Sound.ting(0.3, HERO_NOTE * 2, 0);
+});
+
+/* ---------- 버튼 ---------- */
+const toastEl = $('toast'); let toastT;
+function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 1800); }
+function setBtn(el, on) { el.classList.toggle('on', on); el.setAttribute('aria-pressed', on); }
+
+$('btnSound').addEventListener('click', () => {
+  Sound.init(); Sound.on = !Sound.on; setBtn($('btnSound'), Sound.on);
+  if (Sound.on) Sound.ting(0.5, 784, 0);
+});
+$('btnGravity').addEventListener('click', () => {
+  Sound.init(); state.gravity = !state.gravity; setBtn($('btnGravity'), state.gravity);
+  if (!state.sensor) { state.gx = 0; state.gy = -1; }
+  toast(state.gravity ? '딸기가 천천히 가라앉아요' : '다시 무중력이에요');
+});
+$('btnShake').addEventListener('click', async () => {
+  Sound.init();
+  if (IS_TOUCH && !state.sensor) { await enableSensor(); return; }
+  shake(1);
+});
+const isTyping = e => /^(INPUT|TEXTAREA)$/.test(e.target.tagName);
+addEventListener('keydown', e => {
+  if (isTyping(e)) { if (e.key === 'Escape') closePanel(); return; }
+  if (e.code === 'Space') { e.preventDefault(); Sound.init(); shake(1); }
+  if (e.code === 'KeyG') $('btnGravity').click();
+  if (e.key === '+' || e.code === 'Equal') { Sound.init(); spawnBerry(); }
+});
+
+const chips = [...document.querySelectorAll('.chip')];
+function syncChips(ci) { chips.forEach(c => c.classList.toggle('on', +c.dataset.color === ci)); }
+chips.forEach(chip => chip.addEventListener('click', () => {
+  Sound.init();
+  const ci = +chip.dataset.color; state.colorMode = ci; syncChips(ci);
+  bodies.forEach((b, i) => {
+    const pi = ci < 0 ? i % PALETTE.length : ci;
+    b.pi = pi; setMaterialColor(b.mesh.material, pi); b.shadow.material.color.set(PALETTE[pi].att);
+    b.pop = 0.6;
+  });
+  Sound.ting(0.4, 1046.5, 0);
+}));
+
+/* ---------- 배경 문구 패널 ---------- */
+const inMain = $('inMain'), inSub = $('inSub'), inClock = $('inClock');
+function fillPanel() { inMain.value = typeOpt.main; inSub.value = typeOpt.sub; inClock.checked = typeOpt.clock; }
+function openPanel() { fillPanel(); $('panel').hidden = false; $('btnText').classList.add('on'); $('btnText').setAttribute('aria-expanded', 'true'); if (!IS_TOUCH) inMain.focus(); }
+function closePanel() { $('panel').hidden = true; $('btnText').classList.remove('on'); $('btnText').setAttribute('aria-expanded', 'false'); }
+$('btnText').addEventListener('click', () => ($('panel').hidden ? openPanel() : closePanel()));
+let typeT;
+function applyText() {
+  typeOpt = { main: inMain.value.slice(0, 48), sub: inSub.value.slice(0, 24), clock: inClock.checked };
+  saveText();
+  clearTimeout(typeT); typeT = setTimeout(drawType, 60);
+}
+inMain.addEventListener('input', applyText);
+inSub.addEventListener('input', applyText);
+inClock.addEventListener('change', applyText);
+$('btnTextReset').addEventListener('click', () => { typeOpt = { ...DEFAULT_TEXT, clock: inClock.checked }; fillPanel(); applyText(); });
+$('btnTextDone').addEventListener('click', closePanel);
+
+/* ---------- 휴대폰 센서 (기울이면 가라앉고, 흔들면 부딪힘) ---------- */
+async function enableSensor() {
+  try {
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+      const r = await DeviceMotionEvent.requestPermission();
+      if (r !== 'granted') { toast('동작 센서 권한이 필요해요'); return; }
+    }
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      await DeviceOrientationEvent.requestPermission().catch(() => {});
+    }
+  } catch (err) { toast('센서를 켤 수 없어요 (https 주소에서 열어 주세요)'); return; }
+  addEventListener('devicemotion', onMotion);
+  addEventListener('deviceorientation', onOrient);
+  state.sensor = true; state.gravity = true;
+  setBtn($('btnGravity'), true); setBtn($('btnShake'), true);
+  $('shakeLabel').textContent = '센서 켜짐';
+  $('hint').textContent = '폰을 기울이면 천천히 흐르고, 흔들면 부딪혀요';
+  toast('폰을 흔들어 보세요');
+  setTimeout(() => { if (!gotMotion) toast('센서 신호가 없어요 · https 주소에서 열어 주세요'); }, 1500);
+}
+let gotMotion = false, lastShake = 0;
+function screenAngle() { return (screen.orientation && screen.orientation.angle) || window.orientation || 0; }
+function onOrient(e) {
+  if (e.beta == null) return;
+  gotMotion = true;
+  const b = THREE.MathUtils.degToRad(e.beta), g = THREE.MathUtils.degToRad(e.gamma);
+  const dx = Math.sin(g) * Math.cos(b), dy = -Math.sin(b);
+  const a = THREE.MathUtils.degToRad(screenAngle());
+  state.gx = dx * Math.cos(a) + dy * Math.sin(a);
+  state.gy = -dx * Math.sin(a) + dy * Math.cos(a);
+}
+function onMotion(e) {
+  const a = e.acceleration;
+  if (!a || a.x == null) return;
+  gotMotion = true;
+  const m = Math.hypot(a.x, a.y, a.z), now = performance.now();
+  if (m > 9 && now - lastShake > 180) {
+    lastShake = now;
+    shake(Math.min(1.4, (m - 6) / 14), new THREE.Vector2(-a.x, -a.y).normalize());
+  }
+}
+if (IS_TOUCH) $('hint').textContent = '끌어서 살짝 밀기 · ‘흔들기’를 누르면 폰 센서가 켜져요';
+
+/* ---------- 물리 : 무중력 ---------- */
+const tmp = new THREE.Vector2(), n2 = new THREE.Vector2();
+const qd = new THREE.Quaternion(), axis = new THREE.Vector3();
+let clock = 0;
+
+function hit(b, strength, pan) {
+  if (clock - b.lastHit < 0.25) return;
+  b.lastHit = clock;
+  Sound.ting(strength, b.note, pan);
+}
+
+function step(dt) {
+  clock += dt;
+  const G = UNIT * 1.1;
+  // 사라지는 딸기는 작아지며 빠짐
+  for (let i = bodies.length - 1; i >= 0; i--) {
+    const b = bodies[i];
+    if (b.leaving) { b.grow -= dt * 2.4; if (b.grow <= 0) removeBody(b); }
+    else if (b.grow < 1) b.grow = Math.min(1, b.grow + dt * 1.6);
+  }
+  for (const b of bodies) {
+    if (pointer.body === b) {
+      tmp.copy(pointer.world).add(pointer.offset).sub(b.pos);
+      b.vel.lerp(tmp.multiplyScalar(6), 0.25);   // 손끝을 느슨하게 따라옴
+      continue;
+    }
+    if (state.gravity) {
+      b.vel.x += state.gx * G * dt; b.vel.y += state.gy * G * dt;
+      b.vel.multiplyScalar(Math.pow(0.6, dt));
+    } else {
+      // 무중력: 마찰이 거의 없고, 아주 천천히 원래의 느린 표류로 돌아감
+      tmp.copy(b.drift).multiplyScalar(UNIT);
+      b.vel.lerp(tmp, 1 - Math.exp(-dt / 7));
+    }
+    b.vel.clampLength(0, UNIT * 2);
+  }
+  for (const b of bodies) b.pos.addScaledVector(b.vel, dt);
+
+  // 서로 부딪힘 — 무거운 유리구슬처럼 둔하게
+  for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
+    const a = bodies[i], c = bodies[j];
+    const ra = a.r * a.grow, rc = c.r * c.grow;
+    n2.copy(c.pos).sub(a.pos);
+    const d = n2.length(), min = (ra + rc) * 0.9;
+    if (d >= min || d === 0) continue;
+    n2.divideScalar(d);
+    const ma = a.r ** 3 * (a.isHero ? 1.6 : 1), mc = c.r ** 3 * (c.isHero ? 1.6 : 1);
+    const ia = pointer.body === a ? 0 : 1 / ma, ic = pointer.body === c ? 0 : 1 / mc;
+    const sum = ia + ic || 1, pen = min - d;
+    a.pos.addScaledVector(n2, -pen * ia / sum); c.pos.addScaledVector(n2, pen * ic / sum);
+    const vn = tmp.copy(c.vel).sub(a.vel).dot(n2);
+    if (vn < 0) {
+      const jimp = -(1 + 0.8) * vn / sum;
+      a.vel.addScaledVector(n2, -jimp * ia); c.vel.addScaledVector(n2, jimp * ic);
+      // 부딪힌 만큼만 아주 조금 돌아감
+      const tw = Math.min(0.35, -vn / UNIT * 0.25);
+      a.ang.add(randomUnit3(tw)); c.ang.add(randomUnit3(tw));
+      const s = Math.min(1, -vn / (UNIT * 0.9));
+      if (s > 0.04) {
+        const pan = ((a.pos.x + c.pos.x) / 2) / HW;
+        hit(a, s, pan); if (s > 0.25) hit(c, s * 0.7, pan);
+        a.pop = Math.max(a.pop, s * 0.4); c.pop = Math.max(c.pop, s * 0.4);
+      }
+    }
+  }
+  // 화면 가장자리 — 부드럽게 되튕김
+  for (const b of bodies) {
+    const lim = 0.82 * b.grow;
+    const ex = HW - b.r * lim, ey = HH - b.r * lim;
+    const fy = state.gravity && state.gy > 0.2 ? -ey : Math.max(-ey, FLOOR + b.r * lim);
+    const e = state.gravity ? 0.35 : 0.8;
+    let v = 0;
+    if (b.pos.x < -ex) { b.pos.x = -ex; if (b.vel.x < 0) { v = -b.vel.x; b.vel.x *= -e; b.drift.x = Math.abs(b.drift.x); } }
+    if (b.pos.x > ex) { b.pos.x = ex; if (b.vel.x > 0) { v = b.vel.x; b.vel.x *= -e; b.drift.x = -Math.abs(b.drift.x); } }
+    if (b.pos.y < fy) { b.pos.y = fy; if (b.vel.y < 0) { v = Math.max(v, -b.vel.y); b.vel.y *= -e; b.drift.y = Math.abs(b.drift.y); } }
+    if (b.pos.y > ey) { b.pos.y = ey; if (b.vel.y > 0) { v = Math.max(v, b.vel.y); b.vel.y *= -e; b.drift.y = -Math.abs(b.drift.y); } }
+    const s = v / (UNIT * 1.6);
+    if (s > 0.08) hit(b, s * 0.45, b.pos.x / HW);
+  }
+
+  // 회전 — 각자의 아주 느린 자전으로 서서히 돌아감
+  for (const b of bodies) {
+    if (state.gravity) b.ang.multiplyScalar(Math.pow(0.4, dt));
+    else b.ang.lerp(b.spin, 1 - Math.exp(-dt / 3));
+    b.ang.clampLength(0, 0.9);
+    const w = b.ang.length();
+    if (w > 1e-4) {
+      axis.copy(b.ang).divideScalar(w);
+      qd.setFromAxisAngle(axis, w * dt);
+      b.mesh.quaternion.premultiply(qd);
+    }
+    b.pop = Math.max(0, b.pop - dt * 1.8);
+  }
+}
+
+function syncMeshes() {
+  const k = (CAM_Z - TEXT_Z) / CAM_Z;
+  for (const b of bodies) {
+    b.mesh.position.set(b.pos.x, b.pos.y, b.z);
+    const g = b.grow < 1 ? 1 - Math.pow(1 - Math.max(0, b.grow), 3) : 1;
+    const pulse = 1 + Math.sin(b.pop * Math.PI) * 0.04;
+    b.mesh.scale.setScalar(b.r / b.unitR * pulse * g);
+    // 뒤 종이에 번지는 붉은 그림자 — 빛이 왼쪽 위에서 옴
+    b.shadow.position.set(b.pos.x * k + b.r * 0.55, b.pos.y * k - b.r * 0.75, TEXT_Z + 0.01);
+    b.shadow.scale.set(b.r * 2.9 * k * g, b.r * 2.2 * k * g, 1);
+    b.shadow.rotation.z = -0.5;
+  }
+}
+
+/* ---------- 생성 ---------- */
+function decodeB64(s) { const bin = atob(s), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
+async function loadHeroBuffer() {
+  if (location.protocol !== 'file:') {
+    try { const r = await fetch('assets/berry-hero.glb'); if (r.ok) return await r.arrayBuffer(); } catch (e) {}
+  }
+  // 파일을 더블클릭해서 열었을 때 (file://) 대비
+  await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'assets/berry-hero.glb.js'; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
+  return decodeB64(window.BERRY_HERO_B64);
+}
+
+async function build() {
+  try { await Promise.all(['900 100px Pretendard', '700 20px Pretendard', '200 100px Pretendard', '600 20px Pretendard'].map(f => document.fonts.load(f))); } catch (e) {}
+  layout();
+
+  // 처음엔 사용자 3D 모델 딸기 한 알만
+  let heroGeo = null;
+  try {
+    const buf = await loadHeroBuffer();
+    const gltf = await new Promise((ok, no) => new GLTFLoader().parse(buf, '', ok, no));
+    gltf.scene.traverse(o => { if (o.isMesh && !heroGeo) heroGeo = o.geometry; });
+  } catch (e) { console.warn('hero model failed, using procedural berry', e); }
+  const m = new THREE.Mesh(heroGeo || geos[0], glassMaterial(0));
+  m.rotation.set(0.15, -0.35, -0.08);
+  const hero = addBody(m, { k: 1.45, pi: 0, note: HERO_NOTE, unitR: heroGeo ? 0.95 : 1.05, isHero: true });
+  hero.pos.set(0, (FLOOR + HH) / 2);
+  hero.grow = 0;
+  $('loading').classList.add('done');
+
+  let prev = performance.now();
+  renderer.setAnimationLoop(now => {
+    const dt = Math.min(0.05, (now - prev) / 1000); prev = now;
+    for (let i = 0; i < 3; i++) step(dt / 3);
+    bodies.forEach(b => tickMaterial(b.mesh.material, dt));
+    syncMeshes();
+    renderer.render(scene, camera);
+  });
+}
+
+let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(layout, 120); });
+build();
+</script>
+</body>
+</html>
